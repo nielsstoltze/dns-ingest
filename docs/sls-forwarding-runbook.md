@@ -15,25 +15,41 @@ Time: ~5 minutes. Reversible — disable the profile to stop.
 
 ## Steps in SCM
 
-1. Sign in to **Strata Cloud Manager** → **Manage → Configuration →
-   Strata Logging Service → Log Forwarding**
-2. Click **Add** → **HTTPS**
-3. Profile name: `dns-logs-hoej-eu`
-4. URL: `https://dns-logs.hoej.eu/v1/ingest`
-5. Method: `POST`
-6. Payload format: **JSON**, compression: **GZIP**
-7. Batch size: **500** (or platform default)
-8. Authentication:
-   - **None** if you trust the wildcard cert chain (lab default)
-   - **Client cert** if you want mTLS — issue from HOEJ Root CA 2046
-     and import on both ends; add `ssl_verify_client on; ssl_client_certificate /etc/nginx/ca.pem;`
-     to the vhost
-9. Certificate validation: **enabled** (wildcard `*.hoej.eu` is publicly
-   trusted via Cloudflare/Let's Encrypt — verify chain works)
-10. Filter / Match-list:
-    - Log type: **DNS Security**
-    - Filter: leave wide-open initially; tighten once we see traffic
-11. **Save** → **Commit**
+This is two screens, not one.
+
+### Step 1 — Define the HTTPS server profile (transport)
+
+SCM → **Manage → Configuration → Strata Logging Service → Log
+Forwarding → HTTPS Server Profile → Add**
+
+| Field | Value |
+|---|---|
+| NAME | `dns-logs-hoej-eu` |
+| URL  | `https://dns-logs.hoej.eu/v1/ingest` |
+| PROFILE TYPE | `Log Forwarding` (locked) |
+| Server Authentication → CERTIFICATE DETAILS | **Public CAs** — leave empty, do not upload anything. Our `*.hoej.eu` wildcard chains to a public CA |
+| Client Authentication | Leave empty — we do not run mTLS on the nginx side |
+| Client Authorization → TYPE | **None** — we are not Splunk HEC, Sentinel, Chronicle or Exabeam |
+
+Click **Test Connection**. Expect a TLS handshake to succeed and a
+non-error HTTP code (the receiver returns `405` for GET on `/v1/ingest`
+or `204` if SCM happens to POST; both prove the path works).
+
+### Step 2 — Attach a match-list (which logs go through that transport)
+
+SCM → **Strata Logging Service → Log Forwarding** (the profile screen,
+not the server-profile screen).
+
+1. Add a match-list / forwarding rule
+2. Log type: **DNS Security** (or **Threat** with subtype filter `dns`
+   if DNS Security log-type isn't exposed yet on this tenant)
+3. Payload format: **JSON**, compression: **GZIP** if exposed
+4. Destination: the `dns-logs-hoej-eu` server profile from Step 1
+5. Filter: leave wide-open at first; tighten once we see real traffic
+
+### Step 3 — Commit
+
+Save → Commit on the tenant.
 
 ## Verify
 
