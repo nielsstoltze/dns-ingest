@@ -1,0 +1,16 @@
+[Unit]
+Description=DNS-ingest receiver (Strata Logging Service HTTPS sink)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/local_admin/dns-ingest
+EnvironmentFile=-/home/local_admin/dns-ingest/dns-ingest.env
+ExecStart=/home/local_admin/dns-ingest/.venv/bin/uvicorn app.main:app \
+    --host 0.0.0.0 --port 8093 --workers 2 --log-level info
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
