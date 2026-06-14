@@ -70,12 +70,30 @@ async def ingest(request: Request):
     if len(body) > MAX_BATCH_BYTES:
         raise HTTPException(413, "batch too large")
 
+    # SLS HTTPS forwarding offers two payload formats:
+    #   Array JSON   — one big [{...}, {...}] (standard JSON)
+    #   Stacked JSON — newline-delimited {...}\n{...}\n... (NDJSON)
+    # Accept both, plus single object and {"logs":[...]} envelope.
     try:
         payload = json.loads(body)
-    except json.JSONDecodeError as e:
-        raise HTTPException(400, f"invalid json: {e}")
+        records = (
+            payload if isinstance(payload, list)
+            else payload.get("logs") if isinstance(payload, dict) and isinstance(payload.get("logs"), list)
+            else [payload] if isinstance(payload, dict)
+            else None
+        )
+    except json.JSONDecodeError:
+        # Fall back to NDJSON (Stacked JSON)
+        records = []
+        for i, line in enumerate(body.splitlines()):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError as e:
+                raise HTTPException(400, f"invalid json on line {i + 1}: {e}")
 
-    records = payload if isinstance(payload, list) else payload.get("logs") or [payload]
     if not isinstance(records, list):
         raise HTTPException(400, "expected array of records")
 
