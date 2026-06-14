@@ -28,20 +28,31 @@ CREATE INDEX IF NOT EXISTS dns_logs_query_name ON dns_logs(query_name);
 CREATE INDEX IF NOT EXISTS dns_logs_action     ON dns_logs(action);
 """
 
-# SLS field names vary across log-types (dns-security, threat, etc.); pick
-# the first non-null we see and stuff the rest into raw.
-_TIME_KEYS  = ("receive_time", "time_generated", "log_time", "@timestamp")
-_SRC_KEYS   = ("src", "src_ip", "source_ip", "client_ip")
-_QNAME_KEYS = ("query_name", "name", "domain", "url")
-_QTYPE_KEYS = ("query_type", "type", "dns_type")
+# SLS field names vary across log-types and use mixed casing
+# (PascalCase: TimeGenerated/SourceIP, snake_case: receive_time/src_ip,
+#  and even Subtype vs SubType within the same tenant). _pick is
+# case-insensitive — match on lowercased key name.
+_TIME_KEYS  = ("receive_time", "time_generated", "timegenerated",
+               "time_received", "timereceived", "log_time", "@timestamp")
+_SRC_KEYS   = ("src", "src_ip", "source_ip", "sourceip",
+               "source_address", "sourceaddress", "client_ip")
+_QNAME_KEYS = ("query_name", "queryname", "name", "domain", "url",
+               "dnsthreatname", "dns_threat_name")
+_QTYPE_KEYS = ("query_type", "querytype", "dns_request_type",
+               "dnsrequesttype", "type", "dns_type")
 _ACT_KEYS   = ("action", "verdict", "category_action")
-_CAT_KEYS   = ("category_of_app", "category", "subtype")
+_CAT_KEYS   = ("category_of_app", "category", "subtype", "verdict")
 
 
 def _pick(rec, keys):
+    lower = {k.lower(): v for k, v in rec.items()}
     for k in keys:
-        v = rec.get(k)
-        if v not in (None, ""):
+        v = lower.get(k.lower())
+        if v not in (None, "", "None", []):
+            if isinstance(v, list):
+                v = v[0] if v else None
+                if v in (None, ""):
+                    continue
             return str(v)
     return None
 
